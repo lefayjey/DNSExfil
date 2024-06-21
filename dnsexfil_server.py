@@ -69,6 +69,7 @@ class DataResolver(BaseResolver):
             filename_enc = bytearray.fromhex(filename_hex)
             filename = self.xor_decrypt(filename_enc, self.password).decode()
         except:
+            print(color(f"\n[?] Query with unknown format received!"))
             return reply
 
         # Prepare the file key

@@ -113,7 +113,7 @@ while ($chunk_id -lt $nbChunks) {
     $queryType = if ($UseTcp.IsPresent) { "-vc" } else { "" }
     
     # Send DNS query using nslookup
-    nslookup $queryType -type=a $subdomain $DnsServerIp
+    nslookup $queryType -type=a $subdomain $DnsServerIp > $null
 
     # Move to next chunk
     $chunk_id++
