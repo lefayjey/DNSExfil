@@ -37,6 +37,9 @@ fi
 # Get filename from FilePath
 filename=$(basename "$FilePath")
 
+# Calculate MD5 checksum
+echo "[+] MD5 checksum: [$(md5sum $FilePath)]"
+
 # Generate timestamp in format yyyyMMddHHmmss
 timestamp=$(date +"%Y%m%d%H%M%S")
 

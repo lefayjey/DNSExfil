@@ -5,6 +5,7 @@ import binascii
 import gzip
 import sys
 from datetime import datetime
+import hashlib
 
 # Color printing utility
 def color(string, color=None):
@@ -100,10 +101,16 @@ class DataResolver(BaseResolver):
                         decompressed_output_file = output_file[:-3]
                         with open(decompressed_output_file, 'wb') as f:
                             f.write(decompressed_data)
-                        print(color(f"\n[+] Data written to {file_key}"))
+                        md5_hash = hashlib.md5()
+                        with open(decompressed_output_file, "rb") as f:
+                            for chunk in iter(lambda: f.read(4096), b""):
+                                md5_hash.update(chunk)
+                        md5_checksum = md5_hash.hexdigest()
+                        print(color(f"[+] MD5 checksum of {file_key}: {md5_checksum}"))
+                        print(color(f"[+] Data written to ./{file_key}"))
+                        del self.data_store[file_key]  # Clear data after writing
                 except Exception as e:
-                    print(color(f"\n[!] Failed to decode or write data of {file_key}: {e}", 'red'))
-
+                    print(color(f"[!] Failed to decode or write data of {file_key}: {e}", 'red'))
         return reply
 
 # No operation logger to suppress output

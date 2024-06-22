@@ -48,6 +48,10 @@ $data = [System.IO.File]::ReadAllBytes($FilePath)
 $filename = Split-Path -Leaf $FilePath
 $filenameBytes = [System.Text.Encoding]::UTF8.GetBytes($filename)
 
+# Calculate MD5 checksum
+$hash = Get-FileHash -Path $FilePath -Algorithm MD5
+Write-Host "[+] MD5 checksum: [$($hash.Hash) $FilePath]"
+
 # Generate timestamp in format yyyyMMddHHmmss
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 

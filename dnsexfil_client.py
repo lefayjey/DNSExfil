@@ -6,6 +6,7 @@ import socket
 import sys
 import time
 from datetime import datetime
+import hashlib
 
 import dns.resolver
 import dns.query
@@ -66,6 +67,14 @@ def main():
 
     # Get filename from file_path
     filename = os.path.basename(file_path)
+
+    # Calculate MD5 checksum
+    md5_hash = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    md5_checksum = md5_hash.hexdigest()
+    print(f"[+] MD5 checksum: [{file_path}: {md5_checksum}]")
 
     # Generate timestamp in format yyyyMMddHHmmss
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
