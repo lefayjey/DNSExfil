@@ -11,6 +11,7 @@ The Python server script (`dnsexfil_server.py`) listens for DNS queries and reco
 - **XOR Decryption:** Decrypts received data chunks using XOR decryption with the specified password.
 - **File Compression:** Reconstructs and extracts received files locally.
 - **Simultaneous Transfer:** Supports simultaneous connections and transfers.
+- **Resume Interrupted Transfer:** Supports resuming interrupted transfer.
 - **Error Handling:** Ignores queries received twice, and ignores queries with unknown or simple format.
 - **TCP/UDP Support:** Can handle both TCP and UDP DNS queries.
 
