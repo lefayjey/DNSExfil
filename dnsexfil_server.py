@@ -69,6 +69,7 @@ class DataResolver(BaseResolver):
             filename_hex, randnum, number_of_chunks = metadata.split('|')
             filename_enc = bytearray.fromhex(filename_hex)
             filename = self.xor_decrypt(filename_enc, self.password).decode()
+            print(color(f"\n[*] Incoming file from IP: {handler.client_address[0]}"))
         except:
             #print(color(f"\n[?] Query with unknown format received!"))
             return reply
