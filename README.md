@@ -18,19 +18,21 @@ The Python server script (`dnsexfil_server.py`) listens for DNS queries and reco
 ### Requirements
 
 - Python 3.x
-- `dnslib` library (`pip install dnslib`)
+- `dnslib` library
 
 ### Installation
 
 1. Clone or download the repository to your local machine:
 
 ```bash
-git clone https://github.com/lefayjey/DNSExfiltration
+git clone https://github.com/lefayjey/DNSExfil
 ```
 
 2. Install the required Python libraries:
 ```bash
 pip install dnslib
+_or_
+sudo apt install python3-dnslib
 ```
 
 ### Usage
